@@ -1,3 +1,4 @@
+from turtle import color
 import dash
 from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
@@ -220,7 +221,7 @@ def upload_file(contents, filename, username, password):
             global latest_uploaded_filename
             latest_uploaded_filename = save_uploaded_file(contents, filename)  # Save the file to the server
             return f"Uploaded: {filename}"
-    return "Please log in to upload files."
+    return ""
 
 @app.callback(
     [
@@ -362,7 +363,7 @@ def add_to_update_list(n_clicks, group, classification_value):
 def handle_login_logout(login_n_clicks, logout_n_clicks, username, password):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return {}, {}, ""
+        return {}, {}, "Please log in to upload files!"
 
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
@@ -370,7 +371,7 @@ def handle_login_logout(login_n_clicks, logout_n_clicks, username, password):
         if authenticate_user(username, password):
             session['logged_in'] = True
             session['username'] = username
-            return {"display": "none"}, {"display": "inline"}, f"Welcome {username}!"
+            return {"display": "none"}, {"display": "inline"}, f"Welcome {username}! 😎"
         else:
             return {"display": "flex"}, {"display": "none"}, "Invalid username or password"
     elif button_id == "logout-button" and logout_n_clicks > 0:
