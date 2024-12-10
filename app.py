@@ -122,6 +122,20 @@ app.layout = html.Div(id='app-content',
         html.Button("Load Data", id="load-data-button", n_clicks=0),
         html.Div(id="output-data-upload"),
 
+        # New section for column selection and copying
+        html.Div(
+            [
+                dcc.Dropdown(
+                    id="copy-column-dropdown",
+                    multi=True,
+                    placeholder="Select columns to copy"
+                ),
+                html.Button("Copy", id="copy-button", n_clicks=0),
+                html.Div(id="copied-data-table-container"),
+            ],
+            style={"marginTop": "20px"}
+        ),
+
         # Container for the DataTable with scrolling
         html.Div(id="data-table-container"),
         dcc.Dropdown(
@@ -226,6 +240,7 @@ def upload_file(contents, filename, username, password):
 @app.callback(
     [
         Output("data-table-container", "children"),
+        Output("copy-column-dropdown", "options"),
         Output("column-dropdown", "options"),
         Output("group-dropdown", "options"),
     ],
@@ -239,10 +254,11 @@ def load_data(n_clicks, sheet_name, header_row):
         if n_clicks > 0 and latest_uploaded_filename:
             df, error = parse_file(latest_uploaded_filename, sheet_name, header_row)
             if error:
-                return html.Div(error), [], []  # Show error message
+                return html.Div(error), [], [], []  # Show error message
 
             global latest_table_data  # Access global variable to store the DataFrame
             latest_table_data = df  # Store the DataFrame for later use
+            copied_columns = [{"label": col, "value": col} for col in df.columns]
             column_options = [{"label": col, "value": col} for col in df.columns]
             group_options = [{"label": grp, "value": grp} for grp in df["Site"].unique()]
             
@@ -272,17 +288,55 @@ def load_data(n_clicks, sheet_name, header_row):
                         "margin": "10px 0"
                     },  # Add some margin
                 ),
+                copied_columns,
                 column_options,
                 group_options,
             )
-        return html.Div(), [], []
-    return html.Div(), [], []
+        return html.Div(), [], [], []
+    return html.Div(), [], [], []
+
+@app.callback(
+    Output("copied-data-table-container", "children"),
+    [Input("copy-button", "n_clicks")],
+    [State("copy-column-dropdown", "value"), State("data-table", "data")]
+)
+def copy_columns(n_clicks, columns_selected, data):
+    """ Copy selected columns to a new DataFrame and display them in a DataTable """
+    if n_clicks > 0 and data is not None and columns_selected is not None:
+        df = pd.DataFrame(data)
+        df = df[columns_selected]
+        return dash_table.DataTable(
+            data=df.to_dict("records"),
+            columns=[{"name": i, "id": i} for i in df.columns],
+            id="copied-data-table",
+            page_current=0,
+            page_size=10,
+            page_action="native",
+            style_cell={
+                'fontFamily': 'Arial, sans-serif',
+                'fontSize': '14px',
+                'textAlign': 'left',
+                'padding': '10px',
+            },
+            style_header={
+                'backgroundColor': '#0074D9',
+                'color': 'white',
+                'fontWeight': 'bold',
+                'fontSize': '16px'
+            },
+            style_table={
+                "overflowY": "auto",  # Enable vertical scrolling
+                "maxHeight": "400px",  # Set a maximum height for the table container
+                "margin": "10px 0"
+            },  # Add some margin
+        )
+    return html.Div()
 
 @app.callback(
     Output("sorted-data-table-container", "children"),
     [Input("sort-button", "n_clicks")],
     [
-        State("data-table", "data"),
+        State("copied-data-table", "data"),
         State("column-dropdown", "value"),
         State("sort-order", "value"),
     ],
