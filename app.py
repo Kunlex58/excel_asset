@@ -122,6 +122,9 @@ app.layout = html.Div(id='app-content',
         html.Button("Load Data", id="load-data-button", n_clicks=0),
         html.Div(id="output-data-upload"),
 
+        # Container for the DataTable with scrolling
+        html.Div(id="data-table-container"),
+
         # New section for column selection and copying
         html.Div(
             [
@@ -136,8 +139,6 @@ app.layout = html.Div(id='app-content',
             style={"marginTop": "20px"}
         ),
 
-        # Container for the DataTable with scrolling
-        html.Div(id="data-table-container"),
         dcc.Dropdown(
             id="column-dropdown", multi=True, placeholder="Select columns to sort"
         ),
@@ -235,6 +236,8 @@ def upload_file(contents, filename, username, password):
             global latest_uploaded_filename
             latest_uploaded_filename = save_uploaded_file(contents, filename)  # Save the file to the server
             return f"Uploaded: {filename}"
+    else: 
+        return ""
     return ""
 
 @app.callback(
