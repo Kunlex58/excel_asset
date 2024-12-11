@@ -133,7 +133,7 @@ app.layout = html.Div(id='app-content',
                     multi=True,
                     placeholder="Select columns to copy"
                 ),
-                html.Button("Copy", id="copy-button", n_clicks=0),
+                html.Button("Extract columns", id="copy-button", n_clicks=0),
                 html.Div(id="copied-data-table-container"),
             ],
             style={"marginTop": "20px"}
@@ -301,13 +301,15 @@ def load_data(n_clicks, sheet_name, header_row):
 @app.callback(
     Output("copied-data-table-container", "children"),
     [Input("copy-button", "n_clicks")],
-    [State("copy-column-dropdown", "value"), State("data-table", "data")]
+    [State("copy-column-dropdown", "value")]
 )
-def copy_columns(n_clicks, columns_selected, data):
+def copy_columns(n_clicks, columns_selected):
     """ Copy selected columns to a new DataFrame and display them in a DataTable """
-    if n_clicks > 0 and data is not None and columns_selected is not None:
-        df = pd.DataFrame(data)
+    global latest_table_data  # Access global variable to store the DataFrame
+    if n_clicks > 0 and latest_table_data is not None and columns_selected is not None:
+        df = latest_table_data 
         df = df[columns_selected]
+        latest_table_data = df
         return dash_table.DataTable(
             data=df.to_dict("records"),
             columns=[{"name": i, "id": i} for i in df.columns],
@@ -339,15 +341,15 @@ def copy_columns(n_clicks, columns_selected, data):
     Output("sorted-data-table-container", "children"),
     [Input("sort-button", "n_clicks")],
     [
-        State("copied-data-table", "data"),
         State("column-dropdown", "value"),
         State("sort-order", "value"),
     ],
 )
-def sort_data(n_clicks, data, selected_columns, order):
+def sort_data(n_clicks, selected_columns, order):
+    global latest_table_data  # Access global variable to store the DataFrame
     if session.get('logged_in'):
-        if n_clicks > 0 and data is not None and selected_columns is not None:
-            df = pd.DataFrame(data)
+        if n_clicks > 0 and latest_table_data is not None and selected_columns is not None:
+            df = latest_table_data 
             df[selected_columns] = df[selected_columns].apply(
                 pd.to_numeric, errors="ignore"
             )
@@ -368,6 +370,7 @@ def sort_data(n_clicks, data, selected_columns, order):
                             new_row[col] = group.iloc[0][col]
                     new_rows.append(new_row)
             df = pd.concat(new_rows).reset_index(drop=True)
+            latest_table_data = df
             return dash_table.DataTable(
                 data=df.to_dict("records"),
                 columns=[{"name": i, "id": i} for i in df.columns],
@@ -444,15 +447,14 @@ def handle_login_logout(login_n_clicks, logout_n_clicks, username, password):
 
 @app.callback(
     Output("updated-group-table-container", "children"),
-    Input("update-group-button", "n_clicks"),
-    State("sorted-data-table", "data")
+    Input("update-group-button", "n_clicks")
 )
-def update_group(n_clicks, data):
+def update_group(n_clicks):
     """ Update all entries in the update list at once """
     global latest_table_data
     if session.get('logged_in'):
-        if data is not None and n_clicks > 0 and update_list:
-            df = pd.DataFrame(data)  # Make a copy of the latest data
+        if latest_table_data is not None and n_clicks > 0 and update_list:
+            df = latest_table_data  # Make a copy of the latest data
             for update in update_list:
                 group = update["Group"]
                 classification = update["Classification"]
@@ -503,6 +505,7 @@ def update_group(n_clicks, data):
 )
 
 def update_asset_codes(n_clicks, first_blank_row):
+    global latest_table_data
     if session.get('logged_in'):
         if n_clicks > 0 and latest_table_data is not None:
             df = latest_table_data  # Use the latest table data
@@ -519,7 +522,9 @@ def update_asset_codes(n_clicks, first_blank_row):
                 if group['Asset Code'].str.startswith(base_code).any():
                     asset_code_value = group.loc[group['Asset Code'].str.startswith(base_code), 'Asset Code'].iloc[0]
                     df.loc[df['Site'] == name, 'Group Lead?'] = asset_code_value
-
+            
+            # Save the latest table ID and data for use in subsequent updates
+            latest_table_data = df  # Update latest_table_data with the modified DataFrame
             return dash_table.DataTable(
                 data=df.to_dict("records"),
                 columns=[{"name": i, "id": i} for i in df.columns],
@@ -550,20 +555,21 @@ def update_asset_codes(n_clicks, first_blank_row):
 
 @app.callback(
     Output("download-data-link", "data"),
-    Input("download-excel-button", "n_clicks"),
-    [State("asset-data-table", "data")]
+    Input("download-excel-button", "n_clicks")
 )
 
-def download_data(download_excel, asset_table):
+def download_data(n_clicks):
+    global latest_table_data
     if session.get('logged_in'):
-        ctx = dash.callback_context
-        if not ctx.triggered:
-            return None
+        if n_clicks > 0 and latest_table_data is not None:
+            ctx = dash.callback_context
+            if not ctx.triggered:
+                return None
 
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        if asset_table and button_id == 'download-excel-button':
-            df = pd.DataFrame(asset_table)
-            return dcc.send_data_frame(df.to_excel, "updated_data.xlsx", index=False)
+            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            if button_id == 'download-excel-button':
+                df = latest_table_data
+                return dcc.send_data_frame(df.to_excel, "updated_data.xlsx", index=False)
     return None
 
 # Callback to delete uploaded files when the app is closed or refreshed
