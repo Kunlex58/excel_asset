@@ -348,18 +348,22 @@ def copy_columns(n_clicks, columns_selected):
 def sort_data(n_clicks, selected_columns, order):
     global latest_table_data  # Access global variable to store the DataFrame
     if session.get('logged_in'):
-        if n_clicks > 0 and latest_table_data is not None and selected_columns is not None:
-            df = latest_table_data 
-            df[selected_columns] = df[selected_columns].apply(
-                pd.to_numeric, errors="ignore"
-            )
-            df = df.sort_values(by=selected_columns, ascending=(order == "asc"))
+        if n_clicks > 0 and latest_table_data is not None:
+            df = latest_table_data.copy()  # Make a copy of the DataFrame to avoid modifying the original
 
-            grouped = df.groupby("Site")
+            if selected_columns and order != "none":
+                # Convert selected columns to numeric if possible
+                df[selected_columns] = df[selected_columns].apply(pd.to_numeric, errors="ignore")
+
+                # Sort the DataFrame based on the selected columns and order
+                df = df.sort_values(by=selected_columns, ascending=(order == "asc"))
+
+            # Group the data by "Site" and "Building Name" and add summary rows
+            grouped = df.groupby(["Site", "Building Name"])
             new_rows = []
-            for name, group in grouped:
+            for (site, building), group in grouped:
                 new_rows.append(group)
-                if group["Site"].duplicated().any():
+                if group["Site"].duplicated().any() or group["Building Name"].duplicated().any():
                     empty_row = {col: "" for col in df.columns}
                     # Convert "Quantity" column to numeric
                     group["Quantity"] = pd.to_numeric(group["Quantity"], errors="coerce")
@@ -371,6 +375,7 @@ def sort_data(n_clicks, selected_columns, order):
                     new_rows.append(new_row)
             df = pd.concat(new_rows).reset_index(drop=True)
             latest_table_data = df
+
             return dash_table.DataTable(
                 data=df.to_dict("records"),
                 columns=[{"name": i, "id": i} for i in df.columns],
