@@ -508,12 +508,11 @@ def update_group(n_clicks):
     [Input("update-asset-codes-button", "n_clicks")],
     [State("first-blank-row-input", "value")]
 )
-
 def update_asset_codes(n_clicks, first_blank_row):
     global latest_table_data
     if session.get('logged_in'):
         if n_clicks > 0 and latest_table_data is not None:
-            df = latest_table_data  # Use the latest table data
+            df = latest_table_data.copy()  # Make a copy of the latest table data to avoid modifying the original
             base_code = first_blank_row[:-3]  # Extract the base part of the code
             start_number = int(first_blank_row[-3:])  # Extract the starting number
             blank_rows = df[df["Asset Code"] == ""].index
@@ -522,11 +521,12 @@ def update_asset_codes(n_clicks, first_blank_row):
                 for i, idx in enumerate(blank_rows):
                     df.loc[idx, "Asset Code"] = f"{base_code}{str(start_number + i).zfill(3)}"
 
-            grouped = df.groupby('Site')
-            for name, group in grouped:
+            # Group the data by "Site" and "Building Name"
+            grouped = df.groupby(["Site", "Building Name"])
+            for (site, building), group in grouped:
                 if group['Asset Code'].str.startswith(base_code).any():
                     asset_code_value = group.loc[group['Asset Code'].str.startswith(base_code), 'Asset Code'].iloc[0]
-                    df.loc[df['Site'] == name, 'Group Lead?'] = asset_code_value
+                    df.loc[(df['Site'] == site) & (df['Building Name'] == building), 'Group Lead?'] = asset_code_value
             
             # Save the latest table ID and data for use in subsequent updates
             latest_table_data = df  # Update latest_table_data with the modified DataFrame
@@ -556,7 +556,7 @@ def update_asset_codes(n_clicks, first_blank_row):
                     },  # Add some margin
             )
         return dash_table.DataTable()
-    return html.Div() 
+    return html.Div()
 
 @app.callback(
     Output("download-data-link", "data"),
