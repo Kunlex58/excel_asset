@@ -160,6 +160,7 @@ app.layout = html.Div(id='app-content',
         html.Button("Update Group", id="update-group-button", n_clicks=0),
         html.Div(id="update-list-container"),
         html.Div(id="updated-group-table-container"),
+        dcc.Dropdown(id='asset-dropdown', multi=True, placeholder="Select columns for asset grouping"),
         dcc.Input(
             id="first-blank-row-input", type="text", placeholder="First Blank Row"
         ),
@@ -246,6 +247,7 @@ def upload_file(contents, filename, username, password):
         Output("copy-column-dropdown", "options"),
         Output("column-dropdown", "options"),
         Output("group-dropdown", "options"),
+        Output("asset-dropdown", "options"),
     ],
     [Input("load-data-button", "n_clicks")],
     [State("sheet-name", "value"),
@@ -257,13 +259,14 @@ def load_data(n_clicks, sheet_name, header_row):
         if n_clicks > 0 and latest_uploaded_filename:
             df, error = parse_file(latest_uploaded_filename, sheet_name, header_row)
             if error:
-                return html.Div(error), [], [], []  # Show error message
+                return html.Div(error), [], [], [], []  # Show error message
 
             global latest_table_data  # Access global variable to store the DataFrame
             latest_table_data = df  # Store the DataFrame for later use
             copied_columns = [{"label": col, "value": col} for col in df.columns]
             column_options = [{"label": col, "value": col} for col in df.columns]
             group_options = [{"label": grp, "value": grp} for grp in df["Site"].unique()]
+            asset_options = [{"label": col, "value": col} for col in df.columns]
             
             return (
                 dash_table.DataTable(
@@ -294,9 +297,10 @@ def load_data(n_clicks, sheet_name, header_row):
                 copied_columns,
                 column_options,
                 group_options,
+                asset_options,
             )
-        return html.Div(), [], [], []
-    return html.Div(), [], [], []
+        return html.Div(), [], [], [], []
+    return html.Div(), [], [], [], []
 
 @app.callback(
     Output("copied-data-table-container", "children"),
@@ -358,12 +362,12 @@ def sort_data(n_clicks, selected_columns, order):
                 # Sort the DataFrame based on the selected columns and order
                 df = df.sort_values(by=selected_columns, ascending=(order == "asc"))
 
-            # Group the data by "Site" and "Building Name" and add summary rows
-            grouped = df.groupby(["Site", "Building Name"])
+            # Group the data by the selected columns and add summary rows
+            grouped = df.groupby(selected_columns)
             new_rows = []
-            for (site, building), group in grouped:
+            for group_key, group in grouped:
                 new_rows.append(group)
-                if group["Site"].duplicated().any() or group["Building Name"].duplicated().any():
+                if any(group.duplicated(subset=selected_columns)):
                     empty_row = {col: "" for col in df.columns}
                     # Convert "Quantity" column to numeric
                     group["Quantity"] = pd.to_numeric(group["Quantity"], errors="coerce")
@@ -506,9 +510,10 @@ def update_group(n_clicks):
 @app.callback(
     Output("updated-asset-table-container", "children"),
     [Input("update-asset-codes-button", "n_clicks")],
-    [State("first-blank-row-input", "value")]
+    [State("first-blank-row-input", "value"),
+     State("asset-dropdown", "value")]
 )
-def update_asset_codes(n_clicks, first_blank_row):
+def update_asset_codes(n_clicks, first_blank_row, asset_columns):
     global latest_table_data
     if session.get('logged_in'):
         if n_clicks > 0 and latest_table_data is not None:
@@ -521,12 +526,14 @@ def update_asset_codes(n_clicks, first_blank_row):
                 for i, idx in enumerate(blank_rows):
                     df.loc[idx, "Asset Code"] = f"{base_code}{str(start_number + i).zfill(3)}"
 
-            # Group the data by "Site" and "Building Name"
-            grouped = df.groupby(["Site", "Building Name"])
-            for (site, building), group in grouped:
+            # Group the data by the selected columns
+            grouped = df.groupby(asset_columns)
+            for group_key, group in grouped:
                 if group['Asset Code'].str.startswith(base_code).any():
                     asset_code_value = group.loc[group['Asset Code'].str.startswith(base_code), 'Asset Code'].iloc[0]
-                    df.loc[(df['Site'] == site) & (df['Building Name'] == building), 'Group Lead?'] = asset_code_value
+                    # Create a condition to match the group_key tuple
+                    condition = df.apply(lambda row: all(row[col] == key for col, key in zip(asset_columns, group_key)), axis=1)
+                    df.loc[condition, 'Group Lead?'] = asset_code_value
             
             # Save the latest table ID and data for use in subsequent updates
             latest_table_data = df  # Update latest_table_data with the modified DataFrame
@@ -553,11 +560,10 @@ def update_asset_codes(n_clicks, first_blank_row):
                     "overflowY": "auto",  # Enable vertical scrolling
                     "maxHeight": "400px",  # Set a maximum height for the table container
                     "margin": "10px 0"
-                    },  # Add some margin
+                },  # Add some margin
             )
         return dash_table.DataTable()
     return html.Div()
-
 @app.callback(
     Output("download-data-link", "data"),
     Input("download-excel-button", "n_clicks")
